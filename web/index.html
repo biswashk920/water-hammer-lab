@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Water Hammer Simulator</title>
+<style>
+:root{--bg:#e4eaee;--panel:#f6f8f9;--ink:#13232f;--mute:#5b6b76;--line:#c3ced5;--hi:#c8452d;--lo:#1f6fa8;--warn:#a8420f}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 "Segoe UI","Helvetica Neue",system-ui,sans-serif}
+header{padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel)}h1{font-size:19px;margin:0}header p{margin:2px 0 0;color:var(--mute)}
+main{display:grid;grid-template-columns:300px 1fr;gap:14px;padding:14px;max-width:1300px;margin:auto}
+@media(max-width:820px){main{grid-template-columns:1fr}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:12px}
+label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:5px 0}label span{color:var(--mute)}
+input,select{width:120px;padding:4px 6px;border:1px solid var(--line);border-radius:3px;background:#fff;font:inherit;color:var(--ink)}
+h2{font-size:13px;margin:10px 0 4px;font-weight:600}h2:first-child{margin-top:0}
+canvas{width:100%;display:block;background:#fff;border:1px solid var(--line);border-radius:3px;margin-bottom:8px}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.bar input[type=range]{flex:1;min-width:160px;padding:0}
+button{padding:6px 14px;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:3px;font:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--lo);outline-offset:2px}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px}
+.kv div{border-left:3px solid var(--line);padding-left:8px}.kv b{display:block;font-size:17px;font-variant-numeric:tabular-nums}.kv small{color:var(--mute)}
+input[type=checkbox]{width:auto}.tab,.mini{background:#fff;color:var(--ink);border:1px solid var(--line);padding:5px 12px;border-radius:3px}.tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.mini{padding:3px 9px;font-size:12px}.vbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}#v3opts{display:none;flex-wrap:wrap;gap:10px;align-items:center;font-size:12px;width:100%}
+#v3opts label{margin:0;gap:4px;display:inline-flex}#v3opts input[type=range]{width:90px;padding:0}#v3{cursor:grab;touch-action:none}
+#msg{color:var(--warn);min-height:1.4em;margin:0 0 8px}#msg.burst{color:#a3281a;font-weight:600}.kv div.ok{border-color:#2e7d4f}.kv div.warn{border-color:#d08a1d}.kv div.bad{border-color:#a3281a}
+</style></head><body>
+<header><h1>Water hammer simulator</h1><p>Reservoir–pipe–valve transient solved with the Method of Characteristics (validated against Joukowsky, Michaud, and a Python reference).</p></header>
+<main>
+<section id="ctl">
+<h2>Pipe</h2>
+<label><span>Material</span><select id="mat"><option value="200e9,2.2e9,0.008,0.3,240">Steel</option><option value="170e9,2.2e9,0.010,0.28,290">Ductile iron</option><option value="3e9,2.2e9,0.012,0.4,48">PVC</option><option value="0.8e9,2.2e9,0.020,0.45,24">HDPE</option></select></label>
+<label><span>Length (m)</span><input id="L" type="number" value="1000" min="10" step="10"></label>
+<label><span>Inner diameter (mm)</span><input id="D" type="number" value="300" min="10"></label>
+<label><span>Wall thickness (mm)</span><input id="e" type="number" value="8" min="0.5" step="0.5"></label>
+<label><span>Young's modulus E (GPa)</span><input id="E" type="number" value="200" step="0.1"></label>
+<label><span>Poisson ratio</span><input id="nu" type="number" value="0.3" step="0.01"></label>
+<label><span>Yield strength (MPa)</span><input id="sy" type="number" value="240" min="1"></label>
+<label><span>Pipe support</span><select id="support"><option value="anchored">Anchored</option><option value="free">One end free</option><option value="joints">Expansion joints</option></select></label>
+<h2>Pipe elevation (valve = datum)</h2>
+<label><span>Profile</span><select id="prof"><option value="0,0,50">Flat</option><option value="30,0,50">Downhill to valve</option><option value="0,25,50">Hill (crest mid-way)</option><option value="0,-15,50">Valley (dip mid-way)</option><option value="custom">Custom</option></select></label>
+<label><span>Inlet elevation (m)</span><input id="z0" type="number" value="0" step="1"></label>
+<label><span>Mid-point elevation (m)</span><input id="zm" type="number" value="0" step="1"></label>
+<label><span>Mid-point position (%)</span><input id="pm" type="number" value="50" min="5" max="95" step="5"></label>
+<h2>Flow and reservoir</h2>
+<label><span>Initial velocity (m/s)</span><input id="V0" type="number" value="1" step="0.1" min="0.05"></label>
+<label><span>Reservoir level above valve (m)</span><input id="Hres" type="number" value="100" min="1"></label>
+<label><span>Darcy friction factor</span><input id="f" type="number" value="0.02" step="0.005" min="0"></label>
+<h2>Safety</h2>
+<label><span>Required safety factor</span><input id="fosreq" type="number" value="2" step="0.1" min="1"></label>
+<h2>Surge tank</h2>
+<label><span>Use a surge tank</span><input id="tank" type="checkbox" style="width:auto"></label>
+<label><span>Location <b id="txv"></b></span><input id="txf" type="range" min="5" max="95" value="50" style="padding:0"></label>
+<label><span>Tank diameter (m)</span><input id="tD" type="number" value="3" min="0.1" step="0.5"></label>
+<label><span>Tank top above pipe (m)</span><input id="tH" type="number" value="130" min="1"></label>
+<label><span>Orifice diameter (mm)</span><input id="tDo" type="number" value="200" min="5" step="10"></label>
+<h2>Valve</h2>
+<label><span>Closure time (s)</span><input id="Tc" type="number" value="0.5" step="0.1" min="0"></label>
+<label><span>Closure law</span><select id="law"><option value="linear">Linear</option><option value="two">Two-stage (fast then slow)</option></select></label>
+<h2>Numerics</h2>
+<label><span>Simulated time (s)</span><input id="T" type="number" value="15" min="1"></label>
+<label><span>Reaches (N)</span><input id="N" type="number" value="100" min="10" max="400" step="10"></label>
+</section>
+<div>
+<p id="msg"></p>
+<div class="kv" id="kv"></div>
+<div class="bar"><button id="play">Pause</button><input id="scrub" type="range" min="0" max="1" step="1" value="0" aria-label="Time"><label>Speed <select id="spd" style="width:80px"><option value=".25">0.25×</option><option value=".5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label><span id="clock"></span></div>
+<div class="vbar"><b>View</b><button class="tab on" data-v="2d">2D schematic</button><button class="tab" data-v="3d">3D scene</button><button class="tab" data-v="surf">3D pressure surface</button>
+<div id="v3opts"><span>Camera</span><button class="mini" data-cam="iso">Isometric</button><button class="mini" data-cam="side">Side</button><button class="mini" data-cam="top">Top</button><button class="mini" data-cam="valve">Valve end</button>
+<label><input type="checkbox" id="auto"> auto-rotate</label><label>Vertical scale <input type="range" id="vex" min="1" max="8" step="0.5" value="2"></label><label>Wall bulge <input type="range" id="bulge" min="0" max="12" step="1" value="6"></label>
+<label><input type="checkbox" id="rib" checked> pressure curtain</label><label><input type="checkbox" id="envl" checked> envelopes</label><label><input type="checkbox" id="flowp" checked> flow particles</label><label><input type="checkbox" id="cut"> cutaway</label></div></div>
+<canvas id="v3" height="460" style="display:none"></canvas>
+<canvas id="pipe" height="260"></canvas>
+<canvas id="hist" height="230"></canvas>
+<canvas id="tnk" height="180" style="display:none"></canvas>
+<canvas id="env" height="200"></canvas>
+</div></main>
+<script src="moc.js"></script>
+<script src="view3d.js"></script>
+<script>
+const $=id=>document.getElementById(id), g=MOC.g, sg=MOC.sigma, ids=['L','D','e','E','nu','sy','support','V0','Hres','f','fosreq','Tc','law','T','N','tank','txf','tD','tH','tDo','z0','zm','pm'];
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches, PV=2340, PATM=101325;
+let view='2d',stamp=0,S=null,A=null,ereq=null,tNow=0,playing=true,last=0,age=null,parts=[],G=null;
+const bar=(H,p)=>p.rho*g*H/1e5;
+function params(){const v=k=>$(k).value,n=k=>parseFloat(v(k)),on=$('tank').checked;
+  return{L:n('L'),D:n('D')/1e3,e:n('e')/1e3,E:n('E')*1e9,nu:n('nu'),sy:n('sy'),support:v('support'),V0:n('V0'),Hres:n('Hres'),f:n('f'),fosreq:n('fosreq'),Tc:n('Tc'),law:v('law'),T:n('T'),N:Math.min(400,Math.round(n('N'))),tank:on,tx:n('L')*n('txf')/100,tD:on?n('tD'):3,tH:on?n('tH'):150,tDo:on?n('tDo')/1e3:.2,z0:n('z0'),zm:n('zm'),pm:n('pm')}}
+function run(){
+  const p=params(),m=$('msg');m.className='';m.textContent='';S=null;['txf','tD','tH','tDo'].forEach(k=>$(k).disabled=!p.tank);$('txv').textContent='('+p.tx.toFixed(0)+' m from reservoir)';
+  if(Object.values(p).some(x=>typeof x==='number'&&!isFinite(x))||p.L<=0||p.D<=0||p.e<=0||p.E<=0||p.sy<=0||p.V0<=0||p.T<=0||p.fosreq<1||p.N<10||(p.tank&&(p.tD<=0||p.tH<=0||p.tDo<=0))){m.textContent='Enter positive values in every field (required safety factor at least 1, reaches at least 10).';return}
+  try{S=MOC.simulate(p)}catch(err){m.textContent=err.message;return}
+  A=MOC.analyze(S);S.stamp=++stamp;V3.fit(S);V3.spray.length=0;try{ereq=MOC.requiredThickness(p)}catch(err){ereq=null}
+  tNow=0;age=null;parts=[];playing=true;$('play').textContent='Pause';$('scrub').max=A.end;readouts();draw();
+}
+function readouts(){
+  const p=S.p,a=S.a,dH=a*p.V0/g,Hvap=-(PATM-PV)/(p.rho*g),crit=2*p.L/a,fm=(x,d=2)=>x.toFixed(d),hv0=S.field[S.W-1]-S.z[S.W-1],fos=A.fos,xat=i=>fm(i/(S.W-1)*p.L,0)+' m';
+  const st=A.burst||fos<=1?'bad':fos<p.fosreq?'warn':'ok',label=st==='bad'?'Burst':st==='warn'?'Increase wall thickness':'Safe',sig=sg(A.peak,p),stat=p.sy/sg(A.steady,p);
+  const tile=(a,b,c,k='')=>`<div class="${k}"><small>${a}</small><b>${b}</b><small>${c}</small></div>`;
+  const tt=[];if(S.tank){const T=S.tank;let zmax=-1e9,zmin=1e9;for(let i=0;i<=A.end;i++){const v=T.Z[i]-T.zt;if(v>zmax)zmax=v;if(v<zmin)zmin=v}
+    const per=2*Math.PI*Math.sqrt(T.x*T.At/(g*S.A)),sp=T.spill>=0&&T.spill<=A.end,em=T.empty>=0&&T.empty<=A.end;
+    tt.push(tile('Surge tank at',fm(T.x,0)+' m','steady level '+fm(T.Z[0]-T.zt,1)+' m'),tile('Tank level range',fm(zmin,1)+' to '+fm(zmax,1)+' m','top at '+fm(p.tH,1)+' m'),
+      tile('Mass oscillation period',fm(per,0)+' s','rigid column, no friction'),tile('Tank status',sp?'Overflowed':em?'Ran empty':'Within limits',sp?'at t = '+fm(T.spill*S.dt,2)+' s':em?'at t = '+fm(T.empty*S.dt,2)+' s':'no spill, never empty',sp||em?'warn':'ok'))}
+  $('kv').innerHTML=[
+   tile('Wave speed',fm(a,0)+' m/s','from K, E, D/e'),tile('Critical time 2L/a',fm(crit,3)+' s',p.Tc<=crit?'rapid closure':'slow closure'),
+   tile('Joukowsky ρaΔV',fm(bar(dH,p),2)+' bar',fm(dH,1)+' m head, full stop'),tile('Steady valve pressure',fm(bar(hv0,p),2)+' bar',fm(hv0,1)+' m'),
+   tile('Peak pressure',fm(bar(A.peak,p),2)+' bar','at '+xat(A.peakNode)+', t = '+fm(A.peakStep*S.dt,3)+' s'),tile('Minimum pressure',fm(bar(A.minP,p),2)+' bar','at '+xat(A.minNode)+', t = '+fm(A.minStep*S.dt,3)+' s'),
+   tile('Peak hoop stress',fm(sig,1)+' MPa','yield '+fm(p.sy,0)+' MPa'),
+   tile('Factor of safety (peak)',fos>99?'>99':fm(fos,2),label+', required ≥ '+p.fosreq,st),
+   tile('Steady-state factor of safety',fm(stat,2),'before the transient'),
+   tile('Wall for FoS ≥ '+p.fosreq,ereq?fm(ereq*1e3,1)+' mm':'not reachable','current '+fm(p.e*1e3,1)+' mm')].concat(tt).join('');
+  const m=[],need=ereq?' to at least '+fm(ereq*1e3,1)+' mm (recomputed with the new wave speed)':'; no wall up to the pipe diameter reaches this factor, so lower the velocity or close the valve more slowly';
+  if(A.burst)m.push(`Pipe burst ${fm(A.burst.x,0)} m from the reservoir at t = ${fm(A.burst.t,3)} s${A.burst.n===0?' (it cannot hold the steady pressure alone, before the valve moves)':''}: hoop stress reached ${fm(sig,0)} MPa, above the ${fm(p.sy,0)} MPa yield strength. The simulation ends here. Increase the wall thickness${need}.`);
+  else if(fos<p.fosreq)m.push(`Factor of safety is ${fm(fos,2)}, below the required ${p.fosreq}. Increase the wall thickness${need}.`);
+  if(A.minP<Hvap)m.push(`Pressure falls below vapor pressure (${fm(bar(Hvap,p),2)} bar gauge) at ${xat(A.minNode)} from the reservoir. Column separation would occur; this model has no cavitation, so results after that point are not valid.`);
+  if(S.tank){const T=S.tank;if(T.spill>=0&&T.spill<=A.end)m.push(`Surge tank overflowed at t = ${fm(T.spill*S.dt,2)} s: raise the tank top or widen the tank, otherwise it stops limiting the surge.`);
+    if(T.empty>=0&&T.empty<=A.end)m.push(`Surge tank ran empty at t = ${fm(T.empty*S.dt,2)} s: widen the tank or move it; an empty tank no longer protects the pipe.`)}
+  $('msg').className=A.burst?'burst':'';$('msg').innerHTML=m.join('<br>');
+}
+function setup(c){const r=devicePixelRatio||1,w=c.clientWidth,h=+(c.dataset.h||(c.dataset.h=c.getAttribute('height')));c.style.height=h+'px';c.width=w*r;c.height=h*r;const x=c.getContext('2d');x.setTransform(r,0,0,r,0,0);x.clearRect(0,0,w,h);x.font='12px "Segoe UI",system-ui,sans-serif';return{x,w,h}}
+function ramp(u){u=Math.max(-1,Math.min(1,u));const k=Math.abs(u),c=u<0?[31,111,168]:[200,69,45],b=[236,240,242];return`rgb(${b.map((v,i)=>Math.round(v+(c[i]-v)*k)).join()})`}
+function plot(c,series,xr,yr,xl,yl,cur,lines,mk){
+  const{x,w,h}=setup(c),m={l:52,r:12,t:14,b:30},X=v=>m.l+(v-xr[0])/(xr[1]-xr[0])*(w-m.l-m.r),Y=v=>h-m.b-(v-yr[0])/(yr[1]-yr[0])*(h-m.t-m.b);
+  x.strokeStyle='#e1e7ea';x.fillStyle='#5b6b76';x.lineWidth=1;
+  const step=nice((yr[1]-yr[0])/5);for(let v=Math.ceil(yr[0]/step)*step;v<=yr[1];v+=step){x.beginPath();x.moveTo(m.l,Y(v));x.lineTo(w-m.r,Y(v));x.stroke();x.fillText(v.toFixed(step>=1?0:Math.min(4,Math.ceil(-Math.log10(step)))),6,Y(v)+4)}
+  const sx=nice((xr[1]-xr[0])/6);for(let v=0;v<=xr[1];v+=sx)x.fillText(+v.toFixed(2),X(v)-8,h-12);
+  x.fillText(xl,w-m.r-x.measureText(xl).width,h-1);x.fillText(yl,6,11);
+  (lines||[]).forEach(l=>{if(l.v<yr[0]||l.v>yr[1])return;x.strokeStyle=l.c;x.lineWidth=1;x.setLineDash([5,4]);x.beginPath();x.moveTo(m.l,Y(l.v));x.lineTo(w-m.r,Y(l.v));x.stroke();x.setLineDash([]);x.fillStyle=l.c;x.fillText(l.t,w-m.r-x.measureText(l.t).width-4,Y(l.v)-4)});
+  if(mk!=null){x.strokeStyle='#a3281a';x.lineWidth=2;x.beginPath();x.moveTo(X(mk),m.t);x.lineTo(X(mk),h-m.b);x.stroke();x.fillStyle='#a3281a';x.fillText('burst',Math.min(X(mk)+4,w-m.r-34),m.t+24)}
+  series.forEach(s=>{x.strokeStyle=s.c;x.lineWidth=1.6;x.beginPath();s.d.forEach((v,i)=>{const px=X(s.x[i]),py=Y(v);i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();x.fillStyle=s.c;x.fillText(s.n,m.l+6+(s.o||0),m.t+10)});
+  if(cur!=null){x.strokeStyle='#13232f';x.lineWidth=1;x.beginPath();x.moveTo(X(cur),m.t);x.lineTo(X(cur),h-m.b);x.stroke()}
+}
+const nice=r=>{const e=Math.pow(10,Math.floor(Math.log10(r))),f=r/e;return(f<1.5?1:f<3.5?2:f<7.5?5:10)*e};
+function pipe2d(p,W,f,n,rup){const{x,w,h}=setup($('pipe'));
+  if(age!=null&&age<.5&&!RM){const k=8*(1-age/.5);x.translate((Math.random()-.5)*k,(Math.random()-.5)*k)}
+  const x0=50,x1=w-30,cy=h/2-8,hw=22;x.fillStyle='#5b6b76';x.fillText('Reservoir',4,cy-hw-12);x.fillText('Valve',x1-6,cy-hw-12);
+  x.fillStyle='#bcd3e3';x.fillRect(4,cy-hw-6,x0-8,hw*2+12);
+  const pts=[];let minF=Infinity;for(let i=0;i<W;i++){const hh=f[n*W+i],s=sg(hh-S.z[i],p),fi=s>0?p.sy/s:Infinity;if(fi<minF)minF=fi;pts.push([x0+(x1-x0)*i/(W-1),(hh-f[i])/A.rng,fi])}
+  for(let i=0;i<W-1;i++){const u=(pts[i][1]+pts[i+1][1])/2,bw=hw+8*u;x.fillStyle=ramp(u);x.fillRect(pts[i][0],cy-bw,pts[i+1][0]-pts[i][0]+1,bw*2)}
+  x.lineWidth=2;for(let i=0;i<W-1;i++){const fi=Math.min(pts[i][2],pts[i+1][2]);x.strokeStyle=fi<=1?'#a3281a':fi<p.fosreq?'#d08a1d':'#13232f';
+    for(const s of[-1,1]){x.beginPath();x.moveTo(pts[i][0],cy+s*(hw+8*pts[i][1]));x.lineTo(pts[i+1][0],cy+s*(hw+8*pts[i+1][1]));x.stroke()}}
+  if(S.tank){const T=S.tank,tx=pts[T.k][0],top=cy-hw-8*pts[T.k][1],tw=34,ty=34,yb=top-14,hT=yb-ty,z=T.Z[n]-T.zt,fr=Math.max(0,Math.min(1,z/p.tH)),
+      full=T.spill>=0&&n>=T.spill&&z>=p.tH-1e-9,dry=T.empty>=0&&n>=T.empty&&z<=1e-9;
+    x.fillStyle='#6fa8d6';x.fillRect(tx-tw/2+1,yb-fr*hT,tw-2,fr*hT);x.fillStyle='#13232f';x.fillRect(tx-4,yb,8,top-yb);
+    x.strokeStyle=dry?'#a3281a':'#13232f';x.lineWidth=2;x.beginPath();x.moveTo(tx-tw/2,ty);x.lineTo(tx-tw/2,yb);x.lineTo(tx+tw/2,yb);x.lineTo(tx+tw/2,ty);x.stroke();
+    if(full){x.strokeStyle='#6fa8d6';x.lineWidth=3;x.setLineDash([4,3]);x.lineDashOffset=-(performance.now()/30)%7;x.beginPath();x.moveTo(tx-tw/2-2,ty);x.lineTo(tx-tw/2-9,yb);x.moveTo(tx+tw/2+2,ty);x.lineTo(tx+tw/2+9,yb);x.stroke();x.setLineDash([])}
+    const lab='Surge tank '+z.toFixed(1)+' m'+(dry?' (empty)':full?' (overflow)':''),lw=x.measureText(lab).width;x.fillStyle=dry||full?'#a3281a':'#13232f';x.fillText(lab,tx+tw/2+12+lw>w?tx-tw/2-12-lw:tx+tw/2+12,ty+12)}
+  const tv=MOC.tau(n*S.dt,p.Tc,p.law),vh=hw*tv+2;x.fillStyle='#13232f';x.fillRect(x1,cy-hw-6,6,hw*2+12);x.fillStyle='#e4eaee';x.fillRect(x1,cy-vh,6,vh*2);
+  if(rup){const a2=age==null?3:age,bi=A.burst.i,bx=pts[bi][0],by=cy-hw-8*pts[bi][1],gw=10+Math.min(a2,1)*14;G={x:bx,y:by};
+    x.fillStyle='#fff';x.strokeStyle='#a3281a';x.lineWidth=2;x.beginPath();x.moveTo(bx-gw,by-5);
+    for(let k=1;k<=6;k++)x.lineTo(bx-gw+k*gw/3,by+(k%2?-8:0));x.lineTo(bx+gw-4,by+9);x.lineTo(bx-gw+4,by+9);x.closePath();x.fill();x.stroke();
+    if(age!=null&&a2<.9){x.strokeStyle=`rgba(208,138,29,${1-a2/.9})`;x.lineWidth=3;x.beginPath();x.arc(bx,by,a2*170,0,7);x.stroke()}
+    x.fillStyle='#1f6fa8';parts.forEach(q=>{x.globalAlpha=Math.max(0,1-q.life/2.4);x.fillRect(q.x,q.y,3,3)});x.globalAlpha=1;
+    x.fillStyle='#a3281a';x.font='600 15px "Segoe UI",system-ui,sans-serif';x.fillText(`PIPE BURST at ${A.burst.x.toFixed(0)} m, t = ${A.burst.t.toFixed(3)} s. Simulation ended.`,x0,20);x.font='12px "Segoe UI",system-ui,sans-serif'}
+  else{x.fillStyle=minF<=1?'#a3281a':minF<p.fosreq?'#a8420f':'#13232f';x.fillText('Lowest factor of safety now: '+(minF>99?'>99':minF.toFixed(2)),x0,16)}
+  x.fillStyle='#5b6b76';x.fillText('Wall: dark = ok, amber = below required factor of safety, red = at yield.',x0,h-22);
+  x.fillText('Pressure change vs steady state (wall bulge exaggerated). Blue below, red above. Full scale ±'+bar(A.rng,p).toFixed(2)+' bar',x0,h-8);
+}
+function scene3d(n){const{x,w,h}=setup($('v3'));V3.draw(x,w,h,{S,A,n,age,playing,spd:parseFloat($('spd').value),reduce:RM},devicePixelRatio||1)}
+function draw(){
+  if(!S)return;const p=S.p,W=S.W,f=S.field,n=Math.min(A.end,Math.round(tNow/S.dt)),rup=!!A.burst&&n>=A.end;
+  $('tnk').style.display=S.tank?'block':'none';
+  if(view==='2d')pipe2d(p,W,f,n,rup);else scene3d(n);
+  const ts=[],hv=[],hm=[],tkp=[],tz=[],k=Math.max(1,Math.floor(A.end/1500)),pushAt=i=>{ts.push(i*S.dt);hv.push(bar(S.Hv[i]-S.z[W-1],p));hm.push(bar(S.Hm[i]-S.z[(W-1)>>1],p));if(S.tank){tkp.push(bar(S.tank.Hk[i]-S.z[S.tank.k],p));tz.push(S.tank.Z[i]-S.tank.zt)}};
+  for(let i=0;i<=A.end;i+=k)pushAt(i);if(A.end%k)pushAt(A.end);
+  const ylo=Math.min(...hv,...hm,...tkp),yhi=Math.max(...hv,...hm,...tkp),pad=(yhi-ylo)*.08||.1,vb=bar(-(PATM-PV)/(p.rho*g),p),bb=bar(A.Hb,p),inc=bb<=Math.max(yhi,0)*1.4+pad;
+  const lines=[{v:vb,t:'vapor pressure',c:'#a8420f'},{v:bb,t:'yield pressure',c:'#a3281a'}];
+  plot($('hist'),[{x:ts,d:hv,c:'#c8452d',n:'Valve'},{x:ts,d:hm,c:'#1f6fa8',n:'Midpoint',o:60}].concat(S.tank?[{x:ts,d:tkp,c:'#2e7d4f',n:'Tank node',o:135}]:[]),[0,Math.max(A.end*S.dt,8*S.dt)],[Math.min(ylo,vb)-pad,Math.max(yhi,inc?bb:-1e9)+pad],'time (s)','pressure (bar gauge)',n*S.dt,lines,A.burst?A.burst.t:null);
+  const xs=[],mx=[],mn=[],cu=[];for(let i=0;i<W;i++){xs.push(p.L*i/(W-1));mx.push(bar(A.max[i],p));mn.push(bar(A.min[i],p));cu.push(bar(f[n*W+i]-S.z[i],p))}
+  const mxx=Math.max(...mx),ey=[Math.min(...mn,vb)-pad,Math.max(mxx,bb<=mxx*1.4+pad?bb:-1e9)+pad];
+  plot($('env'),[{x:xs,d:mx,c:'#c8452d',n:'Max'},{x:xs,d:mn,c:'#1f6fa8',n:'Min',o:36},{x:xs,d:cu,c:'#13232f',n:'Now',o:72}].concat(S.tank?[{x:[S.tank.x,S.tank.x],d:ey,c:'#2e7d4f',n:'Tank location',o:108}]:[]),[0,p.L],ey,'distance from reservoir (m)','pressure envelope (bar)',null,lines);
+  if(S.tank){const zl=Math.min(...tz),zh=Math.max(...tz),pz=(zh-zl)*.12||.5;
+    plot($('tnk'),[{x:ts,d:tz,c:'#1f6fa8',n:'Tank level'}],[0,Math.max(A.end*S.dt,8*S.dt)],[zl-pz,zh+pz],'time (s)','tank level above pipe axis (m)',n*S.dt,[{v:p.tH,t:'tank top',c:'#a3281a'},{v:0,t:'tank bottom',c:'#a3281a'}],null)}
+  $('scrub').value=n;$('clock').textContent='t = '+(n*S.dt).toFixed(3)+' s';
+}
+function frame(ts){const dt=Math.min(.05,(ts-last)/1e3);last=ts;
+  if(S){const te=A.end*S.dt;V3.update(dt,{S,A,n:Math.min(A.end,Math.round(tNow/S.dt)),age,playing,spd:parseFloat($('spd').value)});
+    if(age!=null){age+=dt;if(G&&!RM)for(let i=0,c=Math.round((age<2?260:100)*dt);i<c;i++)parts.push({x:G.x+(Math.random()-.5)*10,y:G.y,vx:(Math.random()-.5)*90,vy:-(100+Math.random()*120),life:0});
+      parts.forEach(q=>{q.vy+=420*dt;q.x+=q.vx*dt;q.y+=q.vy*dt;q.life+=dt});parts=parts.filter(q=>q.life<2.4);draw()}
+    else if(playing){tNow+=dt*(4*S.p.L/S.a/8)*parseFloat($('spd').value);if(tNow>=te){tNow=te;if(A.burst){age=0;playing=false;$('play').textContent='Replay'}else tNow=0}draw()}else if(view!=='2d'&&(V3.opt.auto||V3.spray.length))draw()}
+  requestAnimationFrame(frame)}
+$('play').onclick=()=>{if(!S)return;if(age!=null||(A.burst&&tNow>=A.end*S.dt)){tNow=0;age=null;parts=[];playing=true;$('play').textContent='Pause';return}playing=!playing;$('play').textContent=playing?'Pause':'Play'};
+$('scrub').oninput=e=>{if(!S)return;age=null;parts=[];playing=false;$('play').textContent='Play';tNow=e.target.value*S.dt;draw()};
+$('mat').onchange=e=>{const[E,K,t,nu,sy]=e.target.value.split(',');$('E').value=E/1e9;$('e').value=t*1e3;$('nu').value=nu;$('sy').value=sy;run()};
+let tm;ids.forEach(k=>$(k).addEventListener('input',()=>{clearTimeout(tm);tm=setTimeout(run,250)}));
+const setView=v=>{view=v;$('pipe').style.display=v==='2d'?'block':'none';$('v3').style.display=v==='2d'?'none':'block';V3.setMode(v==='surf'?'surface':'scene');
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.v===v));$('v3opts').style.display=v==='2d'?'none':'flex';draw()};
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>setView(b.dataset.v));
+document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>{V3.preset(b.dataset.cam);draw()});
+[['vex','vex',1],['bulge','bulge',1],['rib','ribbon',0],['envl','env',0],['flowp','flow',0],['cut','cut',0],['auto','auto',0]].forEach(([id,k,num])=>$(id).addEventListener('input',e=>{V3.opt[k]=num?+e.target.value:e.target.checked;draw()}));
+V3.attach($('v3'),()=>draw());
+$('prof').onchange=e=>{if(e.target.value==='custom')return;const[a,b,c]=e.target.value.split(',');$('z0').value=a;$('zm').value=b;$('pm').value=c;run()};
+['z0','zm','pm'].forEach(k=>$(k).addEventListener('input',()=>{$('prof').value='custom'}));
+addEventListener('resize',draw);run();requestAnimationFrame(frame);
+</script></body></html>
