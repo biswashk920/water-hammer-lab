@@ -4,7 +4,7 @@
 
 An interactive water hammer (pressure surge) simulator that runs in the browser. It solves a reservoir, pipe and valve system with the Method of Characteristics and shows the result in 2D and 3D. The solver is written in JavaScript and checked against a separate Python implementation.
 
-![3D scene](docs/3d-scene.png)
+![3D scene](figures/3d-scene.png)
 
 ## What it does
 
@@ -27,7 +27,7 @@ Drag to rotate, scroll to zoom, shift+drag to pan, double-click to reset the cam
 
 | Pressure surface | Burst |
 | --- | --- |
-| ![Pressure surface](docs/pressure-surface.png) | ![Burst](docs/burst.png) |
+| ![Pressure surface](figures/pressure-surface.png) | ![Burst](figures/burst.png) |
 
 ## Model
 
